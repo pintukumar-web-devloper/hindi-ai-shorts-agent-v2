@@ -1,0 +1,86 @@
+
+name: Agnes Flash Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate 5-second Shera Bhai video
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os, json, time, requests
+
+          headers = {
+              "Authorization": f"Bearer {os.environ['AGNES_API_KEY']}",
+              "Content-Type": "application/json"
+          }
+
+          payload = {
+              "model": "agnes-video-2.5-flash",
+              "prompt": "A majestic anthropomorphic white lion wearing a luxurious white three-piece suit and black sunglasses walks confidently beside a beautiful royal palace. Natural walking animation, cinematic camera movement, realistic fur motion, consistent character appearance, vertical video.",
+              "seconds": "5",
+              "mode": "text",
+              "size": "720P",
+              "aspect_ratio": "9:16"
+          }
+
+          response = requests.post(
+              "https://apihub.agnes-ai.com/v1/videos",
+              headers=headers,
+              json=payload,
+              timeout=60
+          )
+          response.raise_for_status()
+          data = response.json()
+          video_id = data.get("video_id")
+
+          if not video_id:
+              raise RuntimeError(f"No video_id returned: {data}")
+
+          print("Video task created:", video_id)
+
+          for _ in range(60):
+              result = requests.get(
+                  "https://apihub.agnes-ai.com/agnesapi",
+                  headers=headers,
+                  params={
+                      "video_id": video_id,
+                      "model_name": "agnes-video-2.5-flash"
+                  },
+                  timeout=60
+              )
+              result.raise_for_status()
+              status_data = result.json()
+              status = status_data.get("status")
+              print("Status:", status, "Progress:", status_data.get("progress"))
+
+              if status == "completed":
+                  url = status_data.get("url")
+                  if not url:
+                      raise RuntimeError("Video URL missing")
+                  video = requests.get(url, timeout=120)
+                  video.raise_for_status()
+                  with open("shera-test.mp4", "wb") as f:
+                      f.write(video.content)
+                  print("Video downloaded successfully!")
+                  break
+
+              if status == "failed":
+                  raise RuntimeError(str(status_data))
+
+              time.sleep(2)
+          else:
+              raise TimeoutError("Video generation timed out")
+          PY
+
+      - name: Upload test video
+        uses: actions/upload-artifact@v4
+        with:
+          name: shera-test-video
+          path: shera-test.mp4
+          
