@@ -25,7 +25,7 @@ jobs:
           import base64
           import urllib.request
 
-          image_path = "shera-bhai-reference.png"
+          image_path = "file_0000000029208208a25cef26a55343bd.png"
 
           if not os.path.exists(image_path):
               raise Exception("Shera Bhai reference image nahi mili!")
