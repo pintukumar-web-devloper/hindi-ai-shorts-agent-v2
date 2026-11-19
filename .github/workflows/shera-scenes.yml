@@ -1,1 +1,120 @@
 
+name: Shera Bhai Scene Generator
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-scenes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get repository files
+        uses: actions/checkout@v4
+
+      - name: Generate scene prompts with Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import base64
+          import urllib.request
+
+          image_path = "shera-bhai-reference.png"
+
+          if not os.path.exists(image_path):
+              raise Exception("Shera Bhai reference image nahi mili!")
+
+          with open(image_path, "rb") as f:
+              image_data = base64.b64encode(f.read()).decode("utf-8")
+
+          prompt = """
+          You are a professional cinematic storyboard creator.
+
+          Study the attached Shera Bhai character reference image.
+
+          Create exactly 8 detailed visual prompts for this Hindi YouTube Short:
+          Shera Bhai aur 1000 Kg Sone ki Nadi.
+
+          CHARACTER CONSISTENCY IS VERY IMPORTANT:
+          - Same white lion character in every scene.
+          - Same white luxury suit.
+          - Same black sunglasses.
+          - Same white fur, face, mane and body proportions.
+          - Same royal, wealthy personality.
+          - Do not change his identity or outfit.
+
+          Story scenes:
+          1. Shera Bhai arrives near a beautiful river in a luxury setting.
+          2. He announces that he will turn the river into gold.
+          3. A spectacular golden waterfall appears.
+          4. Shera Bhai proudly shows the flowing gold.
+          5. He lifts a golden cup beside the river.
+          6. His lion bodyguards stand beside him.
+          7. Shera Bhai looks at the camera and asks a funny question.
+          8. A grand cinematic ending with Shera Bhai.
+
+          For every scene provide:
+          - Scene number and duration.
+          - Detailed image-generation prompt.
+          - Camera angle and lighting.
+          - Background and character pose.
+
+          Use cinematic 3D animated movie style.
+          Vertical 9:16 composition.
+          Do not include tobacco, cigarettes or cigars.
+          Output in simple English prompts.
+          """
+
+          body = {
+              "contents": [{
+                  "parts": [
+                      {"text": prompt},
+                      {
+                          "inline_data": {
+                              "mime_type": "image/png",
+                              "data": image_data
+                          }
+                      }
+                  ]
+              }]
+          }
+
+          url = (
+              "https://generativelanguage.googleapis.com/"
+              "v1beta/models/gemini-3.1-flash-lite:generateContent"
+          )
+
+          request = urllib.request.Request(
+              url,
+              data=json.dumps(body).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "x-goog-api-key": os.environ["GEMINI_API_KEY"]
+              },
+              method="POST"
+          )
+
+          with urllib.request.urlopen(request, timeout=120) as response:
+              result = json.loads(response.read().decode("utf-8"))
+
+          text = result["candidates"][0]["content"]["parts"][0]["text"]
+
+          with open("shera-scenes.md", "w", encoding="utf-8") as f:
+              f.write("# Shera Bhai - 8 Scene Prompts\n\n")
+              f.write(text)
+
+          print("Shera Bhai ke 8 scene prompts successfully generated!")
+          PY
+
+      - name: Save scene prompts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shera-bhai-scene-prompts
+          path: shera-scenes.md
+          
