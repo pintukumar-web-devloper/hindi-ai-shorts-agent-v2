@@ -13,21 +13,29 @@ jobs:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
         run: |
           python - <<'PY'
-          import os, json, time, requests
+          import os
+          import time
+          import requests
+
+          api_key = os.environ.get("AGNES_API_KEY")
+          if not api_key:
+              raise RuntimeError("AGNES_API_KEY secret is missing")
 
           headers = {
-              "Authorization": f"Bearer {os.environ['AGNES_API_KEY']}",
+              "Authorization": f"Bearer {api_key}",
               "Content-Type": "application/json"
           }
 
           payload = {
               "model": "agnes-video-2.5-flash",
-              "prompt": "A majestic anthropomorphic white lion wearing a luxurious white three-piece suit and black sunglasses walks confidently beside a beautiful royal palace. Natural walking animation, cinematic camera movement, realistic fur motion, consistent character appearance, vertical video.",
+              "prompt": "A majestic anthropomorphic white lion wearing a luxurious white three-piece suit and black sunglasses walks confidently beside a beautiful royal palace. Natural walking animation, cinematic camera movement, realistic fur motion, vertical video.",
               "seconds": "5",
               "mode": "text",
               "size": "720P",
               "aspect_ratio": "9:16"
           }
+
+          print("Sending video request to Agnes...")
 
           response = requests.post(
               "https://apihub.agnes-ai.com/v1/videos",
@@ -35,16 +43,20 @@ jobs:
               json=payload,
               timeout=60
           )
+
+          print("HTTP Status:", response.status_code)
+          print("API Response:", response.text[:2000])
+
           response.raise_for_status()
           data = response.json()
           video_id = data.get("video_id")
 
           if not video_id:
-              raise RuntimeError(f"No video_id returned: {data}")
+              raise RuntimeError(f"video_id missing: {data}")
 
           print("Video task created:", video_id)
 
-          for _ in range(60):
+          for attempt in range(60):
               result = requests.get(
                   "https://apihub.agnes-ai.com/agnesapi",
                   headers=headers,
@@ -54,24 +66,34 @@ jobs:
                   },
                   timeout=60
               )
+
+              print("Polling HTTP Status:", result.status_code)
               result.raise_for_status()
+
               status_data = result.json()
               status = status_data.get("status")
-              print("Status:", status, "Progress:", status_data.get("progress"))
+
+              print(
+                  "Video Status:", status,
+                  "Progress:", status_data.get("progress")
+              )
 
               if status == "completed":
                   url = status_data.get("url")
                   if not url:
                       raise RuntimeError("Video URL missing")
+
                   video = requests.get(url, timeout=120)
                   video.raise_for_status()
+
                   with open("shera-test.mp4", "wb") as f:
                       f.write(video.content)
+
                   print("Video downloaded successfully!")
                   break
 
               if status == "failed":
-                  raise RuntimeError(str(status_data))
+                  raise RuntimeError(f"Generation failed: {status_data}")
 
               time.sleep(2)
           else:
